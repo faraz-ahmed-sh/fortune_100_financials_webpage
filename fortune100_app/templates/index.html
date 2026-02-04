@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fortune 100 Company Financials</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Fortune 100 Company Financials</h1>
+            <p class="subtitle">View quarterly financial data for major publicly traded companies</p>
+        </header>
+
+        <div class="company-selector">
+            <label for="company-dropdown">Select a Company:</label>
+            <select id="company-dropdown">
+                <option value="">-- Choose a company --</option>
+                {% for ticker, name in companies.items() %}
+                <option value="{{ ticker }}">{{ name }} ({{ ticker }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Loading financial data...</p>
+        </div>
+
+        <div id="error-message" class="error-message hidden"></div>
+
+        <div id="financial-data" class="hidden">
+            <h2 id="company-title"></h2>
+
+            <div class="data-section">
+                <h3>Financial Data Table (Last 8 Quarters)</h3>
+                <div class="table-container">
+                    <table id="financials-table">
+                        <thead>
+                            <tr>
+                                <th>Quarter</th>
+                                <th>Revenue</th>
+                                <th>Gross Profit</th>
+                                <th>Net Income</th>
+                                <th>Gross Margin</th>
+                                <th>Net Margin</th>
+                                <th>Total Debt</th>
+                                <th>Total Assets</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="charts-section">
+                <h3>Financial Charts</h3>
+
+                <div class="chart-grid">
+                    <div class="chart-container">
+                        <h4>Revenue & Profit Trend</h4>
+                        <canvas id="revenue-chart"></canvas>
+                    </div>
+
+                    <div class="chart-container">
+                        <h4>Profit Margins</h4>
+                        <canvas id="margin-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Data sourced from Yahoo Finance. For informational purposes only.</p>
+            <p>Financial data reflects publicly available quarterly reports (10-Q filings).</p>
+        </footer>
+    </div>
+
+    <script>
+        let revenueChart = null;
+        let marginChart = null;
+
+        document.getElementById('company-dropdown').addEventListener('change', async function() {
+            const ticker = this.value;
+
+            if (!ticker) {
+                document.getElementById('financial-data').classList.add('hidden');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('financial-data').classList.add('hidden');
+            document.getElementById('error-message').classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/financials/${ticker}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+
+                displayFinancialData(data);
+            } catch (error) {
+                showError('Failed to fetch financial data. Please try again.');
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+            }
+        });
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+
+        function displayFinancialData(data) {
+            // Update title
+            document.getElementById('company-title').textContent =
+                `${data.company_name} (${data.ticker})`;
+
+            // Populate table
+            const tableBody = document.getElementById('table-body');
+            tableBody.innerHTML = '';
+
+            data.quarters.forEach(quarter => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${quarter.quarter_display}</td>
+                    <td>${quarter.revenue_display}</td>
+                    <td>${quarter.gross_profit_display}</td>
+                    <td>${quarter.net_income_display}</td>
+                    <td>${quarter.gross_margin_display}</td>
+                    <td>${quarter.net_margin_display}</td>
+                    <td>${quarter.total_debt_display}</td>
+                    <td>${quarter.total_assets_display}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            // Create charts
+            createCharts(data.quarters);
+
+            // Show the data section
+            document.getElementById('financial-data').classList.remove('hidden');
+        }
+
+        function createCharts(quarters) {
+            const labels = quarters.map(q => q.quarter_display);
+
+            // Destroy existing charts if they exist
+            if (revenueChart) revenueChart.destroy();
+            if (marginChart) marginChart.destroy();
+
+            // Revenue & Profit Chart
+            const revenueCtx = document.getElementById('revenue-chart').getContext('2d');
+            revenueChart = new Chart(revenueCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Revenue',
+                            data: quarters.map(q => q.revenue ? q.revenue / 1e9 : null),
+                            backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Net Income',
+                            data: quarters.map(q => q.net_income ? q.net_income / 1e9 : null),
+                            backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: $${context.raw?.toFixed(2) || 'N/A'}B`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Amount (Billions USD)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Margin Chart
+            const marginCtx = document.getElementById('margin-chart').getContext('2d');
+            marginChart = new Chart(marginCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Gross Margin',
+                            data: quarters.map(q => q.gross_margin),
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            tension: 0.3,
+                            fill: false
+                        },
+                        {
+                            label: 'Net Margin',
+                            data: quarters.map(q => q.net_margin),
+                            borderColor: 'rgba(153, 102, 255, 1)',
+                            backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                            tension: 0.3,
+                            fill: false
+                        },
+                        {
+                            label: 'Operating Margin',
+                            data: quarters.map(q => q.operating_margin),
+                            borderColor: 'rgba(255, 159, 64, 1)',
+                            backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                            tension: 0.3,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw?.toFixed(2) || 'N/A'}%`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Margin (%)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
