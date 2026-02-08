@@ -23,6 +23,8 @@ FORTUNE_100_COMPANIES = {
     "V": "Visa Inc.",
     "",
     "",
+    "",
+    "",
     "PG": "Procter & Gamble Co.",
     "MA": "Mastercard Inc.",
     "HD": "The Home Depot Inc.",
