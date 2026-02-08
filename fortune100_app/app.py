@@ -12,6 +12,8 @@ app = Flask(__name__)
 # Fortune 100 companies (subset of major publicly traded companies)
 FORTUNE_100_COMPANIES = {
     "AAPL": "Apple Inc.",
+    "",
+    "",
     "MSFT": "Microsoft Corporation",
     "AMZN": "Amazon.com Inc.",
     "GOOGL": "Alphabet Inc. (Google)",
