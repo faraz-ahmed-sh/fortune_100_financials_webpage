@@ -225,6 +225,103 @@ tbody tr:nth-child(even):hover {
     height: 300px !important;
 }
 
+/* Tab Bar */
+.tab-bar {
+    display: flex;
+    gap: 0;
+    margin-bottom: 25px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.tab-btn {
+    padding: 12px 28px;
+    font-size: 1rem;
+    font-weight: 600;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: #64748b;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.tab-btn:hover {
+    color: #2563eb;
+}
+
+.tab-btn.active {
+    color: #1a365d;
+    border-bottom-color: #2563eb;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Insight Cards */
+.insight-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 30px;
+}
+
+.insight-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    text-align: center;
+    border-left: 4px solid #2563eb;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.insight-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.insight-icon {
+    font-size: 1.8rem;
+    margin-bottom: 6px;
+}
+
+.insight-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.insight-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #1a365d;
+    margin-bottom: 4px;
+}
+
+.insight-sub {
+    font-size: 0.8rem;
+    color: #94a3b8;
+}
+
+/* Positive / Negative value coloring */
+.positive {
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.negative {
+    color: #dc2626;
+    font-weight: 600;
+}
+
 /* Footer */
 footer {
     text-align: center;
@@ -265,6 +362,15 @@ footer p {
     th, td {
         padding: 10px 8px;
     }
+
+    .insight-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .tab-btn {
+        padding: 10px 16px;
+        font-size: 0.9rem;
+    }
 }
 
 @media (max-width: 480px) {
@@ -283,5 +389,26 @@ footer p {
     .data-section,
     .charts-section {
         padding: 15px;
+    }
+
+    .insight-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .tab-bar {
+        flex-direction: column;
+        border-bottom: none;
+    }
+
+    .tab-btn {
+        border-bottom: none;
+        border-left: 3px solid transparent;
+        text-align: left;
+    }
+
+    .tab-btn.active {
+        border-bottom: none;
+        border-left-color: #2563eb;
+        background: #f0f5ff;
     }
 }
