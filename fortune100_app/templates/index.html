@@ -34,40 +34,150 @@
         <div id="financial-data" class="hidden">
             <h2 id="company-title"></h2>
 
-            <div class="data-section">
-                <h3>Financial Data Table (Last 8 Quarters)</h3>
-                <div class="table-container">
-                    <table id="financials-table">
-                        <thead>
-                            <tr>
-                                <th>Quarter</th>
-                                <th>Revenue</th>
-                                <th>Gross Profit</th>
-                                <th>Net Income</th>
-                                <th>Gross Margin</th>
-                                <th>Net Margin</th>
-                                <th>Total Debt</th>
-                                <th>Total Assets</th>
-                            </tr>
-                        </thead>
-                        <tbody id="table-body">
-                        </tbody>
-                    </table>
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="overview">Financial Overview</button>
+                <button class="tab-btn" data-tab="factors">Profit Factor Analysis</button>
+            </div>
+
+            <!-- Tab 1: Financial Overview (existing) -->
+            <div id="tab-overview" class="tab-content active">
+                <div class="data-section">
+                    <h3>Financial Data Table (Last 8 Quarters)</h3>
+                    <div class="table-container">
+                        <table id="financials-table">
+                            <thead>
+                                <tr>
+                                    <th>Quarter</th>
+                                    <th>Revenue</th>
+                                    <th>Gross Profit</th>
+                                    <th>Net Income</th>
+                                    <th>Gross Margin</th>
+                                    <th>Net Margin</th>
+                                    <th>Total Debt</th>
+                                    <th>Total Assets</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="charts-section">
+                    <h3>Financial Charts</h3>
+
+                    <div class="chart-grid">
+                        <div class="chart-container">
+                            <h4>Revenue & Profit Trend</h4>
+                            <canvas id="revenue-chart"></canvas>
+                        </div>
+
+                        <div class="chart-container">
+                            <h4>Profit Margins</h4>
+                            <canvas id="margin-chart"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="charts-section">
-                <h3>Financial Charts</h3>
+            <!-- Tab 2: Profit Factor Analysis (new) -->
+            <div id="tab-factors" class="tab-content">
+                <div id="factors-loading" class="loading hidden">
+                    <div class="spinner"></div>
+                    <p>Loading profit factor data...</p>
+                </div>
+                <div id="factors-error" class="error-message hidden"></div>
 
-                <div class="chart-grid">
-                    <div class="chart-container">
-                        <h4>Revenue & Profit Trend</h4>
-                        <canvas id="revenue-chart"></canvas>
+                <div id="factors-content" class="hidden">
+                    <!-- Insight Cards -->
+                    <div class="insight-cards">
+                        <div class="insight-card" id="insight-rd">
+                            <div class="insight-icon">&#x1F52C;</div>
+                            <div class="insight-label">R&D Intensity</div>
+                            <div class="insight-value" id="insight-rd-val">--</div>
+                            <div class="insight-sub" id="insight-rd-trend"></div>
+                        </div>
+                        <div class="insight-card" id="insight-sga">
+                            <div class="insight-icon">&#x1F4CA;</div>
+                            <div class="insight-label">Cost Discipline (SG&A)</div>
+                            <div class="insight-value" id="insight-sga-val">--</div>
+                            <div class="insight-sub" id="insight-sga-trend"></div>
+                        </div>
+                        <div class="insight-card" id="insight-capex">
+                            <div class="insight-icon">&#x1F3D7;</div>
+                            <div class="insight-label">Capital Investment</div>
+                            <div class="insight-value" id="insight-capex-val">--</div>
+                            <div class="insight-sub" id="insight-capex-trend"></div>
+                        </div>
+                        <div class="insight-card" id="insight-fcf">
+                            <div class="insight-icon">&#x1F4B0;</div>
+                            <div class="insight-label">Free Cash Flow Margin</div>
+                            <div class="insight-value" id="insight-fcf-val">--</div>
+                            <div class="insight-sub" id="insight-fcf-trend"></div>
+                        </div>
+                        <div class="insight-card" id="insight-buyback">
+                            <div class="insight-icon">&#x1F504;</div>
+                            <div class="insight-label">Shareholder Returns</div>
+                            <div class="insight-value" id="insight-buyback-val">--</div>
+                            <div class="insight-sub" id="insight-buyback-trend"></div>
+                        </div>
+                        <div class="insight-card" id="insight-leverage">
+                            <div class="insight-icon">&#x2696;</div>
+                            <div class="insight-label">Debt / Equity</div>
+                            <div class="insight-value" id="insight-leverage-val">--</div>
+                            <div class="insight-sub" id="insight-leverage-trend"></div>
+                        </div>
                     </div>
 
-                    <div class="chart-container">
-                        <h4>Profit Margins</h4>
-                        <canvas id="margin-chart"></canvas>
+                    <!-- Factor Data Table -->
+                    <div class="data-section">
+                        <h3>Profit Factor Breakdown (Last 8 Quarters)</h3>
+                        <div class="table-container">
+                            <table id="factors-table">
+                                <thead>
+                                    <tr>
+                                        <th>Quarter</th>
+                                        <th>Revenue Growth (QoQ)</th>
+                                        <th>R&D Spend</th>
+                                        <th>R&D % Rev</th>
+                                        <th>SG&A Spend</th>
+                                        <th>SG&A % Rev</th>
+                                        <th>CapEx</th>
+                                        <th>CapEx % Rev</th>
+                                        <th>Free Cash Flow</th>
+                                        <th>Buybacks</th>
+                                        <th>Dividends</th>
+                                        <th>Interest Expense</th>
+                                        <th>Debt/Equity</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="factors-table-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Factor Charts -->
+                    <div class="charts-section">
+                        <h3>Profit Factor Trends</h3>
+                        <div class="chart-grid">
+                            <div class="chart-container">
+                                <h4>Investment Intensity (% of Revenue)</h4>
+                                <canvas id="investment-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>Cash Generation & Returns</h4>
+                                <canvas id="cashflow-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>Revenue Growth (QoQ %)</h4>
+                                <canvas id="growth-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>Profitability Levers</h4>
+                                <canvas id="levers-chart"></canvas>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -82,14 +192,48 @@
     <script>
         let revenueChart = null;
         let marginChart = null;
+        let investmentChart = null;
+        let cashflowChart = null;
+        let growthChart = null;
+        let leversChart = null;
+
+        let currentTicker = null;
+        let factorsLoaded = {};
+
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+
+                // Load factors data on first click
+                if (this.dataset.tab === 'factors' && currentTicker && !factorsLoaded[currentTicker]) {
+                    loadProfitFactors(currentTicker);
+                }
+            });
+        });
 
         document.getElementById('company-dropdown').addEventListener('change', async function() {
             const ticker = this.value;
+            currentTicker = ticker;
 
             if (!ticker) {
                 document.getElementById('financial-data').classList.add('hidden');
                 return;
             }
+
+            // Reset factors state for new company
+            factorsLoaded[ticker] = false;
+            document.getElementById('factors-content').classList.add('hidden');
+            document.getElementById('factors-error').classList.add('hidden');
+
+            // Switch to overview tab
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelector('[data-tab="overview"]').classList.add('active');
+            document.getElementById('tab-overview').classList.add('active');
 
             // Show loading
             document.getElementById('loading').classList.remove('hidden');
@@ -120,11 +264,9 @@
         }
 
         function displayFinancialData(data) {
-            // Update title
             document.getElementById('company-title').textContent =
                 `${data.company_name} (${data.ticker})`;
 
-            // Populate table
             const tableBody = document.getElementById('table-body');
             tableBody.innerHTML = '';
 
@@ -143,21 +285,17 @@
                 tableBody.appendChild(row);
             });
 
-            // Create charts
             createCharts(data.quarters);
 
-            // Show the data section
             document.getElementById('financial-data').classList.remove('hidden');
         }
 
         function createCharts(quarters) {
             const labels = quarters.map(q => q.quarter_display);
 
-            // Destroy existing charts if they exist
             if (revenueChart) revenueChart.destroy();
             if (marginChart) marginChart.destroy();
 
-            // Revenue & Profit Chart
             const revenueCtx = document.getElementById('revenue-chart').getContext('2d');
             revenueChart = new Chart(revenueCtx, {
                 type: 'bar',
@@ -184,9 +322,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: {
-                            position: 'top',
-                        },
+                        legend: { position: 'top' },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
@@ -198,16 +334,12 @@
                     scales: {
                         y: {
                             beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Amount (Billions USD)'
-                            }
+                            title: { display: true, text: 'Amount (Billions USD)' }
                         }
                     }
                 }
             });
 
-            // Margin Chart
             const marginCtx = document.getElementById('margin-chart').getContext('2d');
             marginChart = new Chart(marginCtx, {
                 type: 'line',
@@ -219,24 +351,21 @@
                             data: quarters.map(q => q.gross_margin),
                             borderColor: 'rgba(255, 99, 132, 1)',
                             backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                            tension: 0.3,
-                            fill: false
+                            tension: 0.3, fill: false
                         },
                         {
                             label: 'Net Margin',
                             data: quarters.map(q => q.net_margin),
                             borderColor: 'rgba(153, 102, 255, 1)',
                             backgroundColor: 'rgba(153, 102, 255, 0.2)',
-                            tension: 0.3,
-                            fill: false
+                            tension: 0.3, fill: false
                         },
                         {
                             label: 'Operating Margin',
                             data: quarters.map(q => q.operating_margin),
                             borderColor: 'rgba(255, 159, 64, 1)',
                             backgroundColor: 'rgba(255, 159, 64, 0.2)',
-                            tension: 0.3,
-                            fill: false
+                            tension: 0.3, fill: false
                         }
                     ]
                 },
@@ -244,9 +373,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: {
-                            position: 'top',
-                        },
+                        legend: { position: 'top' },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
@@ -256,13 +383,297 @@
                         }
                     },
                     scales: {
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Margin (%)'
+                        y: { title: { display: true, text: 'Margin (%)' } }
+                    }
+                }
+            });
+        }
+
+        // ---------- Profit Factor Analysis ----------
+
+        async function loadProfitFactors(ticker) {
+            document.getElementById('factors-loading').classList.remove('hidden');
+            document.getElementById('factors-content').classList.add('hidden');
+            document.getElementById('factors-error').classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/profit-factors/${ticker}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    document.getElementById('factors-error').textContent = data.error;
+                    document.getElementById('factors-error').classList.remove('hidden');
+                    return;
+                }
+
+                factorsLoaded[ticker] = true;
+                displayProfitFactors(data);
+            } catch (error) {
+                document.getElementById('factors-error').textContent = 'Failed to load profit factor data.';
+                document.getElementById('factors-error').classList.remove('hidden');
+            } finally {
+                document.getElementById('factors-loading').classList.add('hidden');
+            }
+        }
+
+        function displayProfitFactors(data) {
+            const factors = data.factors;
+            if (!factors || factors.length === 0) return;
+
+            // Update insight cards using latest quarter
+            const latest = factors[factors.length - 1];
+            const prev = factors.length > 1 ? factors[factors.length - 2] : null;
+
+            updateInsight('rd', latest.rd_pct, prev?.rd_pct, '%', 'of revenue');
+            updateInsight('sga', latest.sga_pct, prev?.sga_pct, '%', 'of revenue');
+            updateInsight('capex', latest.capex_pct, prev?.capex_pct, '%', 'of revenue');
+            updateInsight('fcf', latest.fcf_margin, prev?.fcf_margin, '%', 'margin');
+            updateInsight('buyback', null, null, '', '',
+                latest.buybacks ? formatCompact(Math.abs(latest.buybacks)) : 'N/A',
+                latest.dividends_paid ? 'Div: ' + formatCompact(Math.abs(latest.dividends_paid)) : '');
+            updateInsight('leverage', latest.debt_to_equity, prev?.debt_to_equity, 'x', 'ratio');
+
+            // Populate table
+            const tbody = document.getElementById('factors-table-body');
+            tbody.innerHTML = '';
+
+            factors.forEach(q => {
+                const row = document.createElement('tr');
+                const growthClass = q.revenue_growth_qoq !== null
+                    ? (q.revenue_growth_qoq >= 0 ? 'positive' : 'negative')
+                    : '';
+                row.innerHTML = `
+                    <td>${q.quarter_display}</td>
+                    <td class="${growthClass}">${q.revenue_growth_qoq !== null ? q.revenue_growth_qoq.toFixed(1) + '%' : '--'}</td>
+                    <td>${q.rd_spend_display}</td>
+                    <td>${q.rd_pct !== null ? q.rd_pct.toFixed(1) + '%' : 'N/A'}</td>
+                    <td>${q.sga_spend_display}</td>
+                    <td>${q.sga_pct !== null ? q.sga_pct.toFixed(1) + '%' : 'N/A'}</td>
+                    <td>${q.capex_display}</td>
+                    <td>${q.capex_pct !== null ? q.capex_pct.toFixed(1) + '%' : 'N/A'}</td>
+                    <td>${q.fcf_display}</td>
+                    <td>${q.buybacks_display}</td>
+                    <td>${q.dividends_paid_display}</td>
+                    <td>${q.interest_expense_display}</td>
+                    <td>${q.debt_to_equity !== null ? q.debt_to_equity.toFixed(2) + 'x' : 'N/A'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            // Create factor charts
+            createFactorCharts(factors);
+
+            document.getElementById('factors-content').classList.remove('hidden');
+        }
+
+        function updateInsight(id, value, prevValue, suffix, subLabel, overrideVal, overrideSub) {
+            const valEl = document.getElementById(`insight-${id}-val`);
+            const trendEl = document.getElementById(`insight-${id}-trend`);
+
+            if (overrideVal !== undefined) {
+                valEl.textContent = overrideVal;
+                trendEl.textContent = overrideSub || '';
+                return;
+            }
+
+            if (value !== null && value !== undefined) {
+                valEl.textContent = value.toFixed(1) + suffix;
+                if (prevValue !== null && prevValue !== undefined) {
+                    const delta = value - prevValue;
+                    const arrow = delta >= 0 ? '\u25B2' : '\u25BC';
+                    const cls = id === 'sga' ? (delta <= 0 ? 'positive' : 'negative')
+                              : id === 'leverage' ? (delta <= 0 ? 'positive' : 'negative')
+                              : (delta >= 0 ? 'positive' : 'negative');
+                    trendEl.innerHTML = `<span class="${cls}">${arrow} ${Math.abs(delta).toFixed(1)}pp QoQ</span> ${subLabel}`;
+                } else {
+                    trendEl.textContent = subLabel;
+                }
+            } else {
+                valEl.textContent = 'N/A';
+                trendEl.textContent = 'Not reported';
+            }
+        }
+
+        function formatCompact(num) {
+            if (num >= 1e9) return '$' + (num / 1e9).toFixed(1) + 'B';
+            if (num >= 1e6) return '$' + (num / 1e6).toFixed(0) + 'M';
+            return '$' + num.toLocaleString();
+        }
+
+        function createFactorCharts(factors) {
+            const labels = factors.map(q => q.quarter_display);
+
+            if (investmentChart) investmentChart.destroy();
+            if (cashflowChart) cashflowChart.destroy();
+            if (growthChart) growthChart.destroy();
+            if (leversChart) leversChart.destroy();
+
+            // Chart 1: Investment Intensity
+            investmentChart = new Chart(document.getElementById('investment-chart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'R&D % of Revenue',
+                            data: factors.map(q => q.rd_pct),
+                            borderColor: '#8b5cf6',
+                            backgroundColor: 'rgba(139,92,246,0.1)',
+                            tension: 0.3, fill: true
+                        },
+                        {
+                            label: 'SG&A % of Revenue',
+                            data: factors.map(q => q.sga_pct),
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245,158,11,0.1)',
+                            tension: 0.3, fill: true
+                        },
+                        {
+                            label: 'CapEx % of Revenue',
+                            data: factors.map(q => q.capex_pct),
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16,185,129,0.1)',
+                            tension: 0.3, fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: ${ctx.raw?.toFixed(1) || 'N/A'}%`
                             }
                         }
+                    },
+                    scales: { y: { title: { display: true, text: '% of Revenue' } } }
+                }
+            });
+
+            // Chart 2: Cash Generation & Returns
+            cashflowChart = new Chart(document.getElementById('cashflow-chart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Operating Cash Flow',
+                            data: factors.map(q => q.op_cashflow ? q.op_cashflow / 1e9 : null),
+                            backgroundColor: 'rgba(59,130,246,0.7)',
+                            borderColor: '#3b82f6', borderWidth: 1
+                        },
+                        {
+                            label: 'Free Cash Flow',
+                            data: factors.map(q => q.free_cash_flow ? q.free_cash_flow / 1e9 : null),
+                            backgroundColor: 'rgba(16,185,129,0.7)',
+                            borderColor: '#10b981', borderWidth: 1
+                        },
+                        {
+                            label: 'Buybacks',
+                            data: factors.map(q => q.buybacks ? Math.abs(q.buybacks) / 1e9 : null),
+                            backgroundColor: 'rgba(239,68,68,0.7)',
+                            borderColor: '#ef4444', borderWidth: 1
+                        },
+                        {
+                            label: 'Dividends',
+                            data: factors.map(q => q.dividends_paid ? Math.abs(q.dividends_paid) / 1e9 : null),
+                            backgroundColor: 'rgba(249,115,22,0.7)',
+                            borderColor: '#f97316', borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: $${ctx.raw?.toFixed(2) || 'N/A'}B`
+                            }
+                        }
+                    },
+                    scales: { y: { title: { display: true, text: 'Billions USD' } } }
+                }
+            });
+
+            // Chart 3: Revenue Growth
+            growthChart = new Chart(document.getElementById('growth-chart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Revenue Growth QoQ',
+                        data: factors.map(q => q.revenue_growth_qoq),
+                        backgroundColor: factors.map(q =>
+                            q.revenue_growth_qoq !== null
+                                ? (q.revenue_growth_qoq >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)')
+                                : 'rgba(156,163,175,0.4)'
+                        ),
+                        borderColor: factors.map(q =>
+                            q.revenue_growth_qoq !== null
+                                ? (q.revenue_growth_qoq >= 0 ? '#10b981' : '#ef4444')
+                                : '#9ca3af'
+                        ),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `Growth: ${ctx.raw?.toFixed(1) || 'N/A'}%`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { title: { display: true, text: 'Growth (%)' } }
                     }
+                }
+            });
+
+            // Chart 4: Profitability Levers (operating margin + net margin + FCF margin)
+            leversChart = new Chart(document.getElementById('levers-chart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Operating Margin',
+                            data: factors.map(q => q.operating_margin),
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245,158,11,0.1)',
+                            tension: 0.3, fill: false
+                        },
+                        {
+                            label: 'Net Margin',
+                            data: factors.map(q => q.net_margin),
+                            borderColor: '#8b5cf6',
+                            backgroundColor: 'rgba(139,92,246,0.1)',
+                            tension: 0.3, fill: false
+                        },
+                        {
+                            label: 'FCF Margin',
+                            data: factors.map(q => q.fcf_margin),
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16,185,129,0.1)',
+                            tension: 0.3, fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: ${ctx.raw?.toFixed(1) || 'N/A'}%`
+                            }
+                        }
+                    },
+                    scales: { y: { title: { display: true, text: 'Margin (%)' } } }
                 }
             });
         }
