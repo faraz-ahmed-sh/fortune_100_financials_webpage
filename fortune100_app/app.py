@@ -6,8 +6,25 @@ Displays quarterly financial data for publicly listed Fortune 100 companies.
 from flask import Flask, render_template, jsonify, request
 import yfinance as yf
 import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LassoCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.decomposition import PCA
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 app = Flask(__name__)
+
+# Cache for all-companies ML data
+all_companies_cache = {
+    "data": None,
+    "model": None,
+    "loading": False,
+    "progress": 0,
+    "total": 0,
+    "lock": threading.Lock()
+}
 
 # Fortune 100 companies (publicly traded companies from Fortune 100)
 FORTUNE_100_COMPANIES = {
@@ -263,6 +280,435 @@ def get_profit_factors(ticker_symbol):
         return None, f"Error fetching profit factors: {str(e)}"
 
 
+# ML Feature configuration
+ML_FEATURE_KEYS = [
+    'rd_pct', 'sga_pct', 'capex_pct', 'fcf_margin', 'operating_margin',
+    'debt_to_equity', 'revenue_growth_qoq', 'revenue', 'interest_expense',
+    'buybacks', 'dividends_paid', 'ebitda', 'op_cashflow'
+]
+
+ML_FEATURE_LABELS = {
+    'revenue': 'Revenue',
+    'rd_pct': 'R&D Intensity (% Rev)',
+    'sga_pct': 'SG&A (% Rev)',
+    'capex_pct': 'CapEx Intensity (% Rev)',
+    'fcf_margin': 'Free Cash Flow Margin',
+    'operating_margin': 'Operating Margin',
+    'debt_to_equity': 'Debt-to-Equity Ratio',
+    'revenue_growth_qoq': 'Revenue Growth (QoQ)',
+    'interest_expense': 'Interest Expense',
+    'buybacks': 'Share Buybacks',
+    'dividends_paid': 'Dividends Paid',
+    'ebitda': 'EBITDA',
+    'op_cashflow': 'Operating Cash Flow'
+}
+
+
+def generate_explanation(factor_key, factor_label, rank, mode, coefficient_or_importance,
+                         correlation, company_name, percentile=None):
+    """Generate a plain-language explanation for why a factor was selected."""
+    direction = "positively" if correlation > 0 else "negatively"
+    corr_abs = abs(correlation)
+
+    if corr_abs > 0.7:
+        strength = "strongly"
+    elif corr_abs > 0.4:
+        strength = "moderately"
+    else:
+        strength = "weakly"
+
+    # Avoid double periods (e.g., "Apple Inc..")
+    name = company_name.rstrip('.')
+
+    if mode == "single":
+        explanation = (
+            f"{factor_label} was the #{rank} predictor of net profit for {name}. "
+            f"It is {strength} {direction} correlated with net income "
+            f"(correlation: {correlation:+.2f}). "
+            f"The Lasso model assigned it a coefficient of {coefficient_or_importance:+.3f}, "
+            f"meaning it remained a significant driver even after accounting for other factors."
+        )
+    else:
+        pct_importance = coefficient_or_importance * 100
+        explanation = (
+            f"{factor_label} is the #{rank} driver of net profit across all "
+            f"{len(FORTUNE_100_COMPANIES)} Fortune 100 companies. "
+            f"It accounts for {pct_importance:.1f}% of the Random Forest model's "
+            f"predictive power and is {strength} {direction} correlated with net income "
+            f"(correlation: {correlation:+.2f})."
+        )
+        if percentile is not None:
+            ordinal = "th"
+            p = int(percentile)
+            if p % 10 == 1 and p != 11:
+                ordinal = "st"
+            elif p % 10 == 2 and p != 12:
+                ordinal = "nd"
+            elif p % 10 == 3 and p != 13:
+                ordinal = "rd"
+            explanation += (
+                f" {company_name}'s value ranks in the {p}{ordinal} percentile among peers."
+            )
+
+    return explanation
+
+
+def build_ml_dataframe(factors_data):
+    """Build a clean DataFrame from profit factors data for ML analysis."""
+    df = pd.DataFrame(factors_data)
+    return df
+
+
+def analyze_single_company(ticker_symbol):
+    """Run Lasso regression on a single company's quarterly data to identify top profit drivers."""
+    factors_data, error = get_profit_factors(ticker_symbol)
+    if error:
+        return None, error
+
+    if not factors_data or len(factors_data) < 3:
+        return None, "Insufficient quarterly data for analysis (need at least 3 quarters)."
+
+    company_name = FORTUNE_100_COMPANIES.get(ticker_symbol, ticker_symbol)
+    df = build_ml_dataframe(factors_data)
+
+    # Extract target
+    if 'net_income' not in df.columns or df['net_income'].notna().sum() < 3:
+        return None, "Insufficient net income data for analysis."
+
+    target = df['net_income'].copy()
+
+    # Select available features
+    available_features = []
+    for key in ML_FEATURE_KEYS:
+        if key in df.columns:
+            non_null = df[key].notna().sum()
+            if non_null >= len(df) // 2:
+                available_features.append(key)
+
+    if len(available_features) < 3:
+        return None, "Insufficient feature data for ML analysis."
+
+    X = df[available_features].copy()
+
+    # Fill NaNs
+    X = X.ffill().bfill().fillna(0)
+    target = target.ffill().bfill().fillna(0)
+
+    # Drop zero-variance columns
+    variances = X.var()
+    zero_var = variances[variances == 0].index.tolist()
+    X = X.drop(columns=zero_var)
+    available_features = [f for f in available_features if f not in zero_var]
+
+    if len(available_features) < 3:
+        return None, "Insufficient feature variance for ML analysis."
+
+    # Standardize
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    target_scaled = (target - target.mean()) / (target.std() + 1e-10)
+
+    # Lasso regression
+    n_samples = len(X_scaled)
+    cv_folds = min(n_samples, 5)
+    try:
+        lasso = LassoCV(cv=cv_folds, max_iter=10000, random_state=42)
+        lasso.fit(X_scaled, target_scaled.values)
+        coefficients = lasso.coef_
+    except Exception:
+        # Fallback: use correlations only
+        coefficients = np.zeros(len(available_features))
+
+    # Correlations
+    feature_correlations = {}
+    for i, feat in enumerate(available_features):
+        corr = np.corrcoef(X_scaled[:, i], target_scaled.values)[0, 1]
+        feature_correlations[feat] = float(corr) if not np.isnan(corr) else 0.0
+
+    # PCA for variance visualization
+    n_components = min(len(available_features), n_samples - 1, 10)
+    if n_components >= 1:
+        pca = PCA(n_components=n_components)
+        pca.fit(X_scaled)
+        explained_variance = [round(float(v), 4) for v in pca.explained_variance_ratio_]
+    else:
+        explained_variance = []
+
+    # Build factor scores - use absolute Lasso coefficient as primary, correlation as tiebreaker
+    all_lasso_zero = np.all(coefficients == 0)
+    factor_scores = []
+    for i, feat in enumerate(available_features):
+        coef = float(coefficients[i])
+        corr = feature_correlations[feat]
+        if all_lasso_zero:
+            importance = abs(corr)
+        else:
+            importance = abs(coef)
+        factor_scores.append({
+            'key': feat,
+            'label': ML_FEATURE_LABELS.get(feat, feat),
+            'coefficient': round(coef, 4),
+            'correlation': round(corr, 4),
+            'importance': round(importance, 4),
+        })
+
+    factor_scores.sort(key=lambda x: x['importance'], reverse=True)
+
+    # Generate explanations for top 3
+    top_3 = factor_scores[:3]
+    for rank_idx, factor in enumerate(top_3):
+        factor['rank'] = rank_idx + 1
+        factor['explanation'] = generate_explanation(
+            factor['key'], factor['label'], rank_idx + 1, "single",
+            factor['coefficient'], factor['correlation'], company_name
+        )
+
+    # Net income trend
+    net_income_trend = [
+        {'quarter': q['quarter_display'], 'value': q.get('net_income')}
+        for q in factors_data
+    ]
+
+    latest = factors_data[-1] if factors_data else {}
+
+    methodology = (
+        f"Lasso Regression (L1-regularized) analysis on {n_samples} quarters of data "
+        f"across {len(available_features)} financial metrics. "
+        f"Lasso automatically selects the most important features by zeroing out "
+        f"less relevant ones. "
+    )
+    if all_lasso_zero:
+        methodology += (
+            "Note: Lasso zeroed out all coefficients (strong regularization), "
+            "so rankings are based on direct correlation with net income."
+        )
+
+    return {
+        'mode': 'single',
+        'ml_technique': 'Lasso Regression (L1)',
+        'top_factors': top_3,
+        'all_factor_scores': factor_scores,
+        'net_income_latest': latest.get('net_income'),
+        'net_income_latest_display': format_large_number(latest.get('net_income')),
+        'net_income_trend': net_income_trend,
+        'pca_explained_variance': explained_variance,
+        'n_quarters': n_samples,
+        'features_used': [ML_FEATURE_LABELS.get(f, f) for f in available_features],
+        'methodology_note': methodology,
+    }, None
+
+
+def fetch_company_factors(ticker_symbol):
+    """Fetch profit factors for a single company (used in parallel fetching)."""
+    try:
+        data, error = get_profit_factors(ticker_symbol)
+        if error or not data:
+            return ticker_symbol, None
+        return ticker_symbol, data
+    except Exception:
+        return ticker_symbol, None
+
+
+def analyze_all_companies(selected_ticker):
+    """Run Random Forest on all companies' data to identify global profit drivers."""
+    global all_companies_cache
+
+    company_name = FORTUNE_100_COMPANIES.get(selected_ticker, selected_ticker)
+
+    # Check cache
+    with all_companies_cache["lock"]:
+        if all_companies_cache["loading"]:
+            return None, "Data is still loading. Please check progress and try again."
+
+        if all_companies_cache["data"] is not None:
+            cached_df = all_companies_cache["data"]
+            cached_model = all_companies_cache["model"]
+            return _run_all_companies_analysis(
+                cached_df, cached_model, selected_ticker, company_name
+            ), None
+
+        all_companies_cache["loading"] = True
+        all_companies_cache["progress"] = 0
+        all_companies_cache["total"] = len(FORTUNE_100_COMPANIES)
+
+    # Fetch all companies in parallel
+    all_rows = []
+    tickers = list(FORTUNE_100_COMPANIES.keys())
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(fetch_company_factors, t): t for t in tickers
+        }
+        completed = 0
+        for future in as_completed(futures):
+            completed += 1
+            all_companies_cache["progress"] = completed
+
+            ticker_sym, data = future.result()
+            if data:
+                for quarter in data:
+                    quarter['_ticker'] = ticker_sym
+                    all_rows.append(quarter)
+
+    if not all_rows:
+        with all_companies_cache["lock"]:
+            all_companies_cache["loading"] = False
+        return None, "Failed to fetch data for any companies."
+
+    combined_df = pd.DataFrame(all_rows)
+
+    # Train model
+    model = _train_all_companies_model(combined_df)
+
+    # Cache results
+    with all_companies_cache["lock"]:
+        all_companies_cache["data"] = combined_df
+        all_companies_cache["model"] = model
+        all_companies_cache["loading"] = False
+
+    return _run_all_companies_analysis(
+        combined_df, model, selected_ticker, company_name
+    ), None
+
+
+def _train_all_companies_model(df):
+    """Train a Random Forest model on the combined dataset."""
+    available_features = []
+    for key in ML_FEATURE_KEYS:
+        if key in df.columns:
+            non_null = df[key].notna().sum()
+            if non_null >= len(df) * 0.3:
+                available_features.append(key)
+
+    X = df[available_features].copy()
+    target = df['net_income'].copy()
+
+    # Drop rows where target is NaN
+    valid_mask = target.notna()
+    X = X[valid_mask]
+    target = target[valid_mask]
+
+    # Fill NaNs in features
+    X = X.ffill().bfill().fillna(0)
+
+    # Drop zero-variance columns
+    variances = X.var()
+    zero_var = variances[variances == 0].index.tolist()
+    X = X.drop(columns=zero_var)
+    available_features = [f for f in available_features if f not in zero_var]
+
+    # Standardize
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # Random Forest
+    rf = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+    rf.fit(X_scaled, target.values)
+
+    # Correlations
+    target_scaled = (target - target.mean()) / (target.std() + 1e-10)
+    correlations = {}
+    for i, feat in enumerate(available_features):
+        corr = np.corrcoef(X_scaled[:, i], target_scaled.values)[0, 1]
+        correlations[feat] = float(corr) if not np.isnan(corr) else 0.0
+
+    # PCA
+    n_components = min(len(available_features), 10)
+    pca = PCA(n_components=n_components)
+    pca.fit(X_scaled)
+
+    return {
+        'rf': rf,
+        'scaler': scaler,
+        'available_features': available_features,
+        'correlations': correlations,
+        'pca_explained_variance': [round(float(v), 4) for v in pca.explained_variance_ratio_],
+        'feature_importances': dict(zip(available_features, rf.feature_importances_)),
+    }
+
+
+def _run_all_companies_analysis(df, model, selected_ticker, company_name):
+    """Produce analysis results for a selected company using the pre-trained model."""
+    available_features = model['available_features']
+    importances = model['feature_importances']
+    correlations = model['correlations']
+
+    # Build factor scores
+    factor_scores = []
+    for feat in available_features:
+        imp = float(importances.get(feat, 0))
+        corr = float(correlations.get(feat, 0))
+        factor_scores.append({
+            'key': feat,
+            'label': ML_FEATURE_LABELS.get(feat, feat),
+            'importance': round(imp, 4),
+            'correlation': round(corr, 4),
+        })
+
+    factor_scores.sort(key=lambda x: x['importance'], reverse=True)
+
+    # Get selected company data for percentile calculation
+    company_df = df[df['_ticker'] == selected_ticker]
+
+    top_3 = factor_scores[:3]
+    for rank_idx, factor in enumerate(top_3):
+        # Calculate percentile for selected company
+        percentile = None
+        if not company_df.empty and factor['key'] in company_df.columns:
+            company_vals = company_df[factor['key']].dropna()
+            all_vals = df[factor['key']].dropna()
+            if len(company_vals) > 0 and len(all_vals) > 0:
+                company_median = company_vals.median()
+                percentile = float((all_vals < company_median).sum() / len(all_vals) * 100)
+                percentile = round(percentile, 0)
+                factor['percentile'] = percentile
+
+        factor['rank'] = rank_idx + 1
+        factor['explanation'] = generate_explanation(
+            factor['key'], factor['label'], rank_idx + 1, "all",
+            factor['importance'], factor['correlation'], company_name,
+            percentile=percentile
+        )
+
+    # Net income trend for selected company
+    net_income_trend = []
+    if not company_df.empty:
+        for _, row in company_df.iterrows():
+            net_income_trend.append({
+                'quarter': row.get('quarter_display', ''),
+                'value': row.get('net_income'),
+            })
+
+    latest_ni = None
+    if net_income_trend:
+        latest_ni = net_income_trend[-1].get('value')
+
+    n_companies = df['_ticker'].nunique()
+    n_observations = len(df[df['net_income'].notna()])
+
+    methodology = (
+        f"Random Forest analysis trained on {n_observations} quarterly observations "
+        f"across {n_companies} Fortune 100 companies and {len(available_features)} "
+        f"financial metrics. Random Forest captures non-linear relationships and "
+        f"feature interactions that linear models miss."
+    )
+
+    return {
+        'mode': 'all',
+        'ml_technique': 'Random Forest',
+        'top_factors': top_3,
+        'all_factor_scores': factor_scores,
+        'net_income_latest': latest_ni,
+        'net_income_latest_display': format_large_number(latest_ni),
+        'net_income_trend': net_income_trend,
+        'pca_explained_variance': model['pca_explained_variance'],
+        'n_companies': n_companies,
+        'n_observations': n_observations,
+        'features_used': [ML_FEATURE_LABELS.get(f, f) for f in available_features],
+        'methodology_note': methodology,
+    }
+
+
 def get_quarterly_financials(ticker_symbol):
     """
     Fetch last 8 quarters of financial data for a given ticker.
@@ -421,6 +867,53 @@ def get_profit_factors_api(ticker):
 def get_companies():
     """API endpoint to get list of available companies."""
     return jsonify(FORTUNE_100_COMPANIES)
+
+
+@app.route("/api/ml-analysis/<ticker>")
+def get_ml_analysis(ticker):
+    """API endpoint for single-company Lasso ML analysis."""
+    if ticker not in FORTUNE_100_COMPANIES:
+        return jsonify({"error": "Invalid company ticker"}), 400
+
+    result, error = analyze_single_company(ticker)
+
+    if error:
+        return jsonify({"error": error}), 500
+
+    return jsonify({
+        "ticker": ticker,
+        "company_name": FORTUNE_100_COMPANIES[ticker],
+        "analysis": result
+    })
+
+
+@app.route("/api/ml-analysis-all/<ticker>")
+def get_ml_analysis_all(ticker):
+    """API endpoint for all-companies Random Forest ML analysis."""
+    if ticker not in FORTUNE_100_COMPANIES:
+        return jsonify({"error": "Invalid company ticker"}), 400
+
+    result, error = analyze_all_companies(ticker)
+
+    if error:
+        return jsonify({"error": error}), 500
+
+    return jsonify({
+        "ticker": ticker,
+        "company_name": FORTUNE_100_COMPANIES[ticker],
+        "analysis": result
+    })
+
+
+@app.route("/api/ml-analysis-all/status")
+def get_ml_loading_status():
+    """API endpoint to check all-companies data loading progress."""
+    return jsonify({
+        "loading": all_companies_cache["loading"],
+        "progress": all_companies_cache["progress"],
+        "total": all_companies_cache["total"],
+        "cached": all_companies_cache["data"] is not None
+    })
 
 
 if __name__ == "__main__":

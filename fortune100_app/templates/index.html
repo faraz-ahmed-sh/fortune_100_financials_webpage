@@ -37,6 +37,7 @@
             <div class="tab-bar">
                 <button class="tab-btn active" data-tab="overview">Financial Overview</button>
                 <button class="tab-btn" data-tab="factors">Profit Factor Analysis</button>
+                <button class="tab-btn" data-tab="ml">ML Profit Drivers</button>
             </div>
 
             <!-- Tab 1: Financial Overview (existing) -->
@@ -181,6 +182,64 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Tab 3: ML Profit Drivers -->
+            <div id="tab-ml" class="tab-content">
+                <div class="ml-mode-selector">
+                    <label for="ml-mode">Analysis Mode:</label>
+                    <select id="ml-mode">
+                        <option value="single">Single Company (Lasso Regression)</option>
+                        <option value="all">All Companies (Random Forest)</option>
+                    </select>
+                </div>
+
+                <div id="ml-loading" class="loading hidden">
+                    <div class="spinner"></div>
+                    <p id="ml-loading-text">Running ML analysis...</p>
+                </div>
+                <div id="ml-error" class="error-message hidden"></div>
+
+                <div id="ml-content" class="hidden">
+                    <div class="methodology-banner">
+                        <div class="methodology-icon">&#x1F9E0;</div>
+                        <div class="methodology-text">
+                            <strong id="ml-technique-title">ML Profit Driver Analysis</strong>
+                            <p id="ml-methodology-note"></p>
+                        </div>
+                    </div>
+
+                    <div class="ml-net-income-card">
+                        <h3>Net Profit (Latest Quarter)</h3>
+                        <div class="ml-net-income-value" id="ml-net-income-val">--</div>
+                    </div>
+
+                    <h3 class="ml-section-title">Top 3 Factors Driving Net Profit</h3>
+                    <div class="top-factors-grid" id="top-factors-container">
+                    </div>
+
+                    <div class="charts-section">
+                        <h3>Analysis Visualizations</h3>
+                        <div class="chart-grid">
+                            <div class="chart-container">
+                                <h4>Feature Importance Scores</h4>
+                                <canvas id="ml-importance-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>PCA Explained Variance</h4>
+                                <canvas id="ml-variance-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>Feature Correlation with Net Profit</h4>
+                                <canvas id="ml-correlation-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>Net Profit Trend</h4>
+                                <canvas id="ml-netincome-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <footer>
@@ -200,6 +259,14 @@
         let currentTicker = null;
         let factorsLoaded = {};
 
+        // ML tab state
+        let mlImportanceChart = null;
+        let mlVarianceChart = null;
+        let mlCorrelationChart = null;
+        let mlNetincomeChart = null;
+        let mlLoaded = {};
+        let mlCurrentMode = 'single';
+
         // Tab switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', function() {
@@ -211,6 +278,11 @@
                 // Load factors data on first click
                 if (this.dataset.tab === 'factors' && currentTicker && !factorsLoaded[currentTicker]) {
                     loadProfitFactors(currentTicker);
+                }
+
+                // Load ML analysis on first click
+                if (this.dataset.tab === 'ml' && currentTicker && !mlLoaded[currentTicker + '_' + mlCurrentMode]) {
+                    loadMlAnalysis(currentTicker, mlCurrentMode);
                 }
             });
         });
@@ -228,6 +300,11 @@
             factorsLoaded[ticker] = false;
             document.getElementById('factors-content').classList.add('hidden');
             document.getElementById('factors-error').classList.add('hidden');
+
+            // Reset ML state for new company
+            mlLoaded = {};
+            document.getElementById('ml-content').classList.add('hidden');
+            document.getElementById('ml-error').classList.add('hidden');
 
             // Switch to overview tab
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -674,6 +751,267 @@
                         }
                     },
                     scales: { y: { title: { display: true, text: 'Margin (%)' } } }
+                }
+            });
+        }
+
+        // ---------- ML Profit Driver Analysis ----------
+
+        document.getElementById('ml-mode').addEventListener('change', function() {
+            mlCurrentMode = this.value;
+            if (currentTicker) {
+                const cacheKey = currentTicker + '_' + mlCurrentMode;
+                if (!mlLoaded[cacheKey]) {
+                    loadMlAnalysis(currentTicker, mlCurrentMode);
+                }
+            }
+        });
+
+        async function loadMlAnalysis(ticker, mode) {
+            document.getElementById('ml-loading').classList.remove('hidden');
+            document.getElementById('ml-content').classList.add('hidden');
+            document.getElementById('ml-error').classList.add('hidden');
+
+            const loadingText = document.getElementById('ml-loading-text');
+
+            const endpoint = mode === 'all'
+                ? `/api/ml-analysis-all/${ticker}`
+                : `/api/ml-analysis/${ticker}`;
+
+            if (mode === 'all') {
+                loadingText.textContent = 'Fetching data for all companies and training model... This may take 1-2 minutes on first load.';
+            } else {
+                loadingText.textContent = 'Running Lasso regression analysis...';
+            }
+
+            try {
+                const response = await fetch(endpoint);
+                const data = await response.json();
+
+                if (data.error) {
+                    document.getElementById('ml-error').textContent = data.error;
+                    document.getElementById('ml-error').classList.remove('hidden');
+                    return;
+                }
+
+                const cacheKey = ticker + '_' + mode;
+                mlLoaded[cacheKey] = true;
+                displayMlAnalysis(data);
+            } catch (error) {
+                document.getElementById('ml-error').textContent = 'Failed to run ML analysis. Please try again.';
+                document.getElementById('ml-error').classList.remove('hidden');
+            } finally {
+                document.getElementById('ml-loading').classList.add('hidden');
+            }
+        }
+
+        function displayMlAnalysis(data) {
+            const analysis = data.analysis;
+
+            // Update technique title and methodology
+            document.getElementById('ml-technique-title').textContent =
+                analysis.ml_technique + ' - Profit Driver Analysis';
+            document.getElementById('ml-methodology-note').textContent = analysis.methodology_note;
+
+            // Net income
+            document.getElementById('ml-net-income-val').textContent =
+                analysis.net_income_latest_display || 'N/A';
+
+            // Top 3 factor cards (dynamically generated)
+            const container = document.getElementById('top-factors-container');
+            container.innerHTML = '';
+
+            const rankColors = ['#f59e0b', '#94a3b8', '#b45309']; // gold, silver, bronze
+            const topFactors = analysis.top_factors || [];
+
+            topFactors.forEach((factor, i) => {
+                const maxImportance = topFactors[0]?.importance || 1;
+                const barWidth = (factor.importance / maxImportance) * 100;
+
+                const card = document.createElement('div');
+                card.className = `factor-card rank-${i + 1}`;
+                card.innerHTML = `
+                    <div class="factor-rank">#${i + 1}</div>
+                    <div class="factor-name">${factor.label}</div>
+                    <div class="factor-score-bar">
+                        <div class="score-fill" style="width: ${barWidth}%"></div>
+                    </div>
+                    <div class="factor-details">
+                        <span class="factor-detail-item">
+                            ${analysis.mode === 'single' ? 'Coefficient' : 'Importance'}:
+                            <strong>${analysis.mode === 'single' ? (factor.coefficient >= 0 ? '+' : '') + factor.coefficient.toFixed(3) : (factor.importance * 100).toFixed(1) + '%'}</strong>
+                        </span>
+                        <span class="factor-detail-item">Correlation: <strong>${factor.correlation >= 0 ? '+' : ''}${factor.correlation.toFixed(3)}</strong></span>
+                        ${factor.percentile !== undefined ? `<span class="factor-detail-item">Peer Percentile: <strong>${factor.percentile.toFixed(0)}th</strong></span>` : ''}
+                    </div>
+                    <div class="factor-explanation">${factor.explanation}</div>
+                `;
+                container.appendChild(card);
+            });
+
+            // Create charts
+            createMlCharts(analysis);
+
+            document.getElementById('ml-content').classList.remove('hidden');
+        }
+
+        function createMlCharts(analysis) {
+            if (mlImportanceChart) mlImportanceChart.destroy();
+            if (mlVarianceChart) mlVarianceChart.destroy();
+            if (mlCorrelationChart) mlCorrelationChart.destroy();
+            if (mlNetincomeChart) mlNetincomeChart.destroy();
+
+            const allFactors = analysis.all_factor_scores || [];
+            const top3Keys = (analysis.top_factors || []).map(f => f.key);
+
+            // Chart 1: Feature Importance (horizontal bar)
+            mlImportanceChart = new Chart(
+                document.getElementById('ml-importance-chart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: allFactors.map(f => f.label),
+                    datasets: [{
+                        label: analysis.mode === 'single' ? 'Abs. Lasso Coefficient' : 'RF Feature Importance',
+                        data: allFactors.map(f => f.importance),
+                        backgroundColor: allFactors.map(f =>
+                            top3Keys.includes(f.key)
+                                ? 'rgba(37, 99, 235, 0.8)'
+                                : 'rgba(148, 163, 184, 0.5)'
+                        ),
+                        borderColor: allFactors.map(f =>
+                            top3Keys.includes(f.key) ? '#2563eb' : '#94a3b8'
+                        ),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Importance Score' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Chart 2: PCA Explained Variance
+            const varianceData = analysis.pca_explained_variance || [];
+            if (varianceData.length > 0) {
+                const cumulative = varianceData.reduce((acc, v, i) => {
+                    acc.push((acc[i - 1] || 0) + v);
+                    return acc;
+                }, []);
+
+                mlVarianceChart = new Chart(
+                    document.getElementById('ml-variance-chart').getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: varianceData.map((_, i) => `PC${i + 1}`),
+                        datasets: [
+                            {
+                                label: 'Explained Variance',
+                                data: varianceData.map(v => v * 100),
+                                backgroundColor: 'rgba(139, 92, 246, 0.7)',
+                                borderColor: '#8b5cf6',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Cumulative %',
+                                data: cumulative.map(v => v * 100),
+                                type: 'line',
+                                borderColor: '#f59e0b',
+                                backgroundColor: 'transparent',
+                                tension: 0.3,
+                                yAxisID: 'y'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top' } },
+                        scales: {
+                            y: {
+                                title: { display: true, text: 'Variance (%)' },
+                                beginAtZero: true,
+                                max: 100
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Chart 3: Correlation with Net Profit (horizontal bar)
+            mlCorrelationChart = new Chart(
+                document.getElementById('ml-correlation-chart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: allFactors.map(f => f.label),
+                    datasets: [{
+                        label: 'Correlation with Net Profit',
+                        data: allFactors.map(f => f.correlation),
+                        backgroundColor: allFactors.map(f =>
+                            f.correlation >= 0
+                                ? 'rgba(16, 185, 129, 0.7)'
+                                : 'rgba(239, 68, 68, 0.7)'
+                        ),
+                        borderColor: allFactors.map(f =>
+                            f.correlation >= 0 ? '#10b981' : '#ef4444'
+                        ),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Pearson Correlation' },
+                            min: -1,
+                            max: 1
+                        }
+                    }
+                }
+            });
+
+            // Chart 4: Net Income Trend
+            const niData = analysis.net_income_trend || [];
+            mlNetincomeChart = new Chart(
+                document.getElementById('ml-netincome-chart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: niData.map(q => q.quarter),
+                    datasets: [{
+                        label: 'Net Income',
+                        data: niData.map(q => q.value ? q.value / 1e9 : null),
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#2563eb'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `Net Income: $${ctx.raw?.toFixed(2) || 'N/A'}B`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { title: { display: true, text: 'Billions USD' } }
+                    }
                 }
             });
         }
